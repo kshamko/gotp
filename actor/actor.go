@@ -1,5 +1,9 @@
 package actor
 
+import (
+	"gopkg.in/tomb.v2"
+)
+
 const (
 	//ReplyOK - ok status for actor response
 	ReplyOK = "ok"
@@ -12,6 +16,7 @@ type Actor struct {
 	replyChan        chan Reply
 	exitChan         chan bool
 	state            StateInterface
+	tmb              tomb.Tomb
 }
 
 //Reply is send by HandleCall or HandleCast
@@ -29,7 +34,7 @@ func (a *Actor) Start(state StateInterface) {
 	a.messageChanSync = make(chan messageInterface)
 	a.messageChanAsync = make(chan messageInterface)
 	a.replyChan = make(chan Reply)
-	go a.loop()
+	a.tmb.Go(a.loop)
 }
 
 //HandleCall makes sync actor call
@@ -50,7 +55,7 @@ func (a *Actor) Stop() {
 }
 
 //main select loop
-func (a *Actor) loop() {
+func (a *Actor) loop() error {
 	for {
 		select {
 		case msg := <-a.messageChanSync:
@@ -59,18 +64,18 @@ func (a *Actor) loop() {
 			a.replyChan <- reply.ActorReply
 			if reply.Stop {
 				a.closeAllChans()
-				return
+				return nil
 			}
 		case msg := <-a.messageChanAsync:
 			reply := msg.Handle(a.state)
 			a.state = reply.State
 			if reply.Stop {
 				a.closeAllChans()
-				return
+				return nil
 			}
 		case <-a.exitChan:
 			a.closeAllChans()
-			return
+			return nil
 		}
 	}
 }
