@@ -1,23 +1,17 @@
 package actor
 
 import (
+	"fmt"
+
 	"gopkg.in/tomb.v2"
 )
 
-const (
+/*const (
 	//ReplyOK - ok status for actor response
-	ReplyOK = "ok"
-)
-
-//Actor struct
-type Actor struct {
-	messageChanSync  chan messageInterface
-	messageChanAsync chan messageInterface
-	replyChan        chan Reply
-	exitChan         chan bool
-	state            StateInterface
-	tmb              tomb.Tomb
-}
+	ReplyOK   = "ok"
+	ReplyErr  = "error"
+	ReplyDead = "dead"
+)*/
 
 //Reply is send by HandleCall or HandleCast
 type Reply struct {
@@ -28,59 +22,98 @@ type Reply struct {
 //StateInterface type is for internal actor state
 type StateInterface interface{}
 
+//Actor struct
+type actor struct {
+	messageChanSync  chan MessageInterface
+	messageChanAsync chan MessageInterface
+	replyChan        chan Reply
+	state            StateInterface
+	stateInitial     StateInterface
+	messages         map[string]MessageInterface
+	tmb              tomb.Tomb
+}
+
 //Start creates new actor
-func (a *Actor) Start(state StateInterface) {
+func (a *actor) start(state StateInterface, messages []MessageInterface) *Pid {
 	a.state = state
-	a.messageChanSync = make(chan messageInterface)
-	a.messageChanAsync = make(chan messageInterface)
+	a.stateInitial = state
+	a.messageChanSync = make(chan MessageInterface)
+	a.messageChanAsync = make(chan MessageInterface)
 	a.replyChan = make(chan Reply)
+	a.messages = make(map[string]MessageInterface)
+
+	for _, m := range messages {
+		a.messages[m.GetType()] = m
+	}
+
 	a.tmb.Go(a.loop)
+
+	return &Pid{
+		a: a,
+	}
 }
 
 //HandleCall makes sync actor call
-func (a *Actor) HandleCall(message messageInterface) Reply {
+func (a *actor) handleCall(message MessageInterface) Reply {
+	//recover from panic while writing to chan when routineis dying
+	defer func() { recover() }()
+	if !a.tmb.Alive() {
+		return Reply{fmt.Errorf("actor_dead"), nil}
+	}
+
 	a.messageChanSync <- message
 	return <-a.replyChan
 }
 
 //HandleCast makes async call to actor
-func (a *Actor) HandleCast(message messageInterface) Reply {
+func (a *actor) handleCast(message MessageInterface) Reply {
+	//recover from panic while writing to chan when routineis dying
+	defer func() { recover() }()
+	if !a.tmb.Alive() {
+		return Reply{fmt.Errorf("actor_dead"), nil}
+	}
 	a.messageChanAsync <- message
-	return Reply{nil, ReplyOK}
+	return Reply{nil, nil}
 }
 
 //Stop stops an actor
-func (a *Actor) Stop() {
-	a.exitChan <- true
+func (a *actor) stop() error {
+	a.tmb.Kill(nil)
+	return a.tmb.Wait()
+}
+
+//GetStopReason returns error led to actor stop
+func (a *actor) getStopReason() error {
+	return a.tmb.Err()
 }
 
 //main select loop
-func (a *Actor) loop() error {
+func (a *actor) loop() error {
 	for {
 		select {
+		case <-a.tmb.Dying():
+			a.closeAllChans()
+			return a.tmb.Err()
+
 		case msg := <-a.messageChanSync:
 			reply := msg.Handle(a.state)
-			a.state = reply.State
 			a.replyChan <- reply.ActorReply
 			if reply.Stop {
-				a.closeAllChans()
-				return nil
+				return reply.Err
 			}
+			a.state = reply.State
+
 		case msg := <-a.messageChanAsync:
 			reply := msg.Handle(a.state)
-			a.state = reply.State
 			if reply.Stop {
-				a.closeAllChans()
-				return nil
+				return reply.Err
 			}
-		case <-a.exitChan:
-			a.closeAllChans()
-			return nil
+			a.state = reply.State
 		}
 	}
 }
 
-func (a *Actor) closeAllChans() {
+func (a *actor) closeAllChans() {
 	close(a.messageChanAsync)
 	close(a.messageChanSync)
 	close(a.replyChan)

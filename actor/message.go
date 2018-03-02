@@ -1,14 +1,15 @@
 package actor
 
 //
-type messageInterface interface {
+type MessageInterface interface {
 	Handle(StateInterface) MessageReply
+	GetType() string
 }
 
 //MessageReply is for reply by Handle()
 type MessageReply struct {
 	ActorReply Reply
 	Stop       bool
-	StopReason string
+	Err        error
 	State      StateInterface
 }
