@@ -165,7 +165,7 @@ func (a *actor) loop() error {
 			//if a.isAlive {
 			reply := msg.Handle(a.state)
 			if reply.Stop {
-				a.tmb.Kill(reply.Err)
+				//a.tmb.Kill(reply.Err)
 				//a.isAlive = false
 				//a.dieChan <- true
 				//a.handelDie(true)
@@ -181,13 +181,13 @@ func (a *actor) handelDie(restart bool) {
 	//defer func() { recover() }()
 	//if !a.isAlive {
 	//fmt.Println("HANDLE KILL")
-
+	//panic("sss")
 	//a.supervisor.supervisorRestartChild(a)
 	a.dieChan <- true
 	if a.isAlive {
-		//close(a.messageChanAsync)
-		//close(a.messageChanSync)
-		//close(a.replyChan)
+		close(a.messageChanAsync)
+		close(a.messageChanSync)
+		close(a.replyChan)
 	}
 	a.isAlive = false
 
