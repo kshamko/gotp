@@ -1,6 +1,8 @@
 package actor
 
 import (
+	"fmt"
+	"sync"
 	"time"
 )
 
@@ -15,10 +17,11 @@ const (
 type sup struct {
 	actor
 	supType int
+	m       sync.Mutex
 }
 
 type ChildSpec struct {
-	State          StateInterface
+	Init           Initer
 	IsSupervisor   bool
 	RestartCount   int
 	RestartRetryIn time.Duration
@@ -27,21 +30,52 @@ type ChildSpec struct {
 
 type supState struct {
 	children []*actor
+	restarts int
 }
 
+//type actorData
+
 //SupervisorStart
-func SupervisorStart(supType int) *Pid {
+func SupervisorStart(supType int) (*sup, error) {
 	msgs := []MessageInterface{
 		msgStartChild{},
 	}
 	s := &sup{supType: supType}
-	return s.start(supState{}, msgs)
+
+	initer := Initer{
+		Fn: func(p interface{}) (StateInterface, error) {
+			return supState{}, nil
+		},
+	}
+
+	s.start(initer, msgs)
+	return s, nil
 }
 
 //SupervisorStartChild starts child
-func SupervisorStartChild(supPid *Pid, spec ChildSpec) (*Pid, error) {
-	res := supPid.Call(msgStartChild{spec})
-	return res.Response.(*Pid), nil
+func (s *sup) SupervisorStartChild(spec ChildSpec) (*actor, error) {
+	//a := &actor{}
+	res := s.HandleCall(msgStartChild{spec, s})
+	fmt.Print(res.Err)
+	return res.Response.(*actor), nil
+}
+
+func (s *sup) supervisorRestartChild(a *actor) error {
+
+	s.HandleCall(msgRestartChild{a, s})
+	//s.HandleCall(msgStartChild{a.spec, s})
+
+	/*spec := pid.spec
+	res := supPid.Call(msgStartChild{spec, supPid})
+
+	newPid := res.Response.(*Pid)
+	pid.a = newPid.a
+	pid.countRestarts++
+
+	newPid = nil
+	fmt.Printf("Intensity: %v, (%v)\n", pid.getRestartIntensity(), pid)*/
+
+	return nil
 }
 
 /*func (sup *Sup) StopChild() {
@@ -53,18 +87,86 @@ func (sup *Sup) restartChild() {
 }*/
 
 //////////
+
+type msgRestartChild struct {
+	a *actor
+	s *sup
+}
+
+func (m msgRestartChild) GetType() string {
+	return "restart_child"
+}
+
+func (m msgRestartChild) Handle(state StateInterface) MessageReply {
+	fmt.Println("restart")
+	dieChan := make(chan bool)
+
+	messages := m.a.messages
+	newa, _ := m.a.start(m.a.initer, []MessageInterface{})
+
+	newa.messages = messages
+	newa.dieChan = dieChan
+	m.a = nil
+
+	s := state.(supState)
+
+	m.s.m.Lock()
+	s.restarts++
+	m.s.m.Unlock()
+
+	go func() {
+		restart := <-dieChan
+		if restart {
+			m.s.supervisorRestartChild(newa)
+		}
+		close(dieChan)
+	}()
+
+	return MessageReply{
+		ActorReply: Reply{nil, newa},
+		State:      s,
+	}
+
+}
+
 type msgStartChild struct {
 	spec ChildSpec
+	sup  *sup
 }
 
 func (m msgStartChild) Handle(state StateInterface) MessageReply {
-	a := &actor{}
-	pid := a.start(m.spec.State, m.spec.Messages)
-	s := state.(supState)
-	s.children = append(s.children, a)
 
+	dieChan := make(chan bool)
+	a := &actor{
+		dieChan: dieChan,
+	}
+	actor, err := a.start(m.spec.Init, m.spec.Messages)
+
+	s := state.(supState)
+	s.restarts++
+
+	if err != nil {
+		return MessageReply{
+			ActorReply: Reply{err, nil},
+			State:      s,
+		}
+	}
+	//s.children = append(s.children, a)
+
+	actor.supervisor = m.sup
+	actor.spec = m.spec
+
+	go func() {
+		restart := <-dieChan
+		if restart {
+			m.sup.supervisorRestartChild(a)
+		}
+		close(dieChan)
+	}()
+
+	fmt.Println("Restarts: ", s.restarts)
 	return MessageReply{
-		ActorReply: Reply{nil, pid},
+		ActorReply: Reply{nil, actor},
 		State:      s,
 	}
 }
