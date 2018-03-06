@@ -21,7 +21,7 @@ type addBalanceMsg struct {
 func (m addBalanceMsg) Handle(state actor.StateInterface) actor.MessageReply {
 	st := state.(st)
 	st.bal += m.inc
-	if st.bal > 0 {
+	if st.bal > 6780 {
 
 		return actor.MessageReply{
 			ActorReply: actor.Reply{
