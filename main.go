@@ -81,35 +81,26 @@ func main() {
 	worker, err := sup.SupervisorStartChild(workerSpec)
 
 	fmt.Printf("WORKER_ACTOR: %v\n Err:%v\n\n", worker, err)
-
-	m := sync.Mutex{}
+	p := sync.Mutex{}
+	w := sync.WaitGroup{}
 	msgs := 0
 
 	for i := 0; i < 40000; i++ {
+		w.Add(1)
 		go func() {
 			for j := 0; j < 20; j++ {
-				m.Lock()
-				msgs += 1
-				m.Unlock()
-
+				p.Lock()
+				msgs++
+				p.Unlock()
 				worker.HandleCast(addBalanceMsg{1})
-
-				//time.Sleep(10 * time.Millisecond)
 			}
+			w.Done()
 		}()
 	}
 
-	/*for j := 0; j < 20; j++ {
-		r := worker.HandleCast(addBalanceMsg{1})
-		fmt.Println("Add", j, ":", r)
-		//time.Sleep(50 * time.Millisecond)
-	}*/
-	//
-	fmt.Printf("\n\n\nGet Balance: %+v\n", worker.HandleCall(getBalanceMsg{}))
-	//a.Stop()
-	time.Sleep(5 * time.Second)
-	fmt.Printf("Get Balance: %+v, \n\n %+v\n", worker.HandleCall(getBalanceMsg{}), sup)
-	fmt.Println(msgs)
+	w.Wait()
 
-	//a.Stop()
+	time.Sleep(1 * time.Second)
+	fmt.Printf("Get Balance: %+v, \n\n %+v\n", worker.HandleCall(getBalanceMsg{}), sup)
+	fmt.Println(msgs, actor.RS, actor.OK, actor.ERR)
 }

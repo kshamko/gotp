@@ -1,7 +1,6 @@
 package actor
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -54,39 +53,14 @@ func SupervisorStart(supType int) (*sup, error) {
 
 //SupervisorStartChild starts child
 func (s *sup) SupervisorStartChild(spec ChildSpec) (*actor, error) {
-	//a := &actor{}
 	res := s.HandleCall(msgStartChild{spec, s})
-	fmt.Print(res.Err)
 	return res.Response.(*actor), nil
 }
 
 func (s *sup) supervisorRestartChild(a *actor) error {
-
 	s.HandleCall(msgRestartChild{a, s})
-	//s.HandleCall(msgStartChild{a.spec, s})
-
-	/*spec := pid.spec
-	res := supPid.Call(msgStartChild{spec, supPid})
-
-	newPid := res.Response.(*Pid)
-	pid.a = newPid.a
-	pid.countRestarts++
-
-	newPid = nil
-	fmt.Printf("Intensity: %v, (%v)\n", pid.getRestartIntensity(), pid)*/
-
 	return nil
 }
-
-/*func (sup *Sup) StopChild() {
-
-}
-
-func (sup *Sup) restartChild() {
-
-}*/
-
-//////////
 
 type msgRestartChild struct {
 	a *actor
@@ -98,7 +72,6 @@ func (m msgRestartChild) GetType() string {
 }
 
 func (m msgRestartChild) Handle(state StateInterface) MessageReply {
-	fmt.Println("restart")
 	dieChan := make(chan bool)
 
 	messages := m.a.messages
@@ -109,10 +82,7 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 	m.a = nil
 
 	s := state.(supState)
-
-	m.s.m.Lock()
 	s.restarts++
-	m.s.m.Unlock()
 
 	go func() {
 		restart := <-dieChan
@@ -143,7 +113,6 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 	actor, err := a.start(m.spec.Init, m.spec.Messages)
 
 	s := state.(supState)
-	s.restarts++
 
 	if err != nil {
 		return MessageReply{
@@ -164,7 +133,6 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 		close(dieChan)
 	}()
 
-	fmt.Println("Restarts: ", s.restarts)
 	return MessageReply{
 		ActorReply: Reply{nil, actor},
 		State:      s,

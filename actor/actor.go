@@ -3,8 +3,6 @@ package actor
 import (
 	"fmt"
 	"sync"
-
-	"gopkg.in/tomb.v2"
 )
 
 /*const (
@@ -32,7 +30,6 @@ type actor struct {
 	messageChanAsync chan MessageInterface
 	replyChan        chan Reply
 	state            StateInterface
-	tmb              *tomb.Tomb
 	messages         map[string]struct{}
 
 	initer Initer
@@ -40,8 +37,8 @@ type actor struct {
 	supervisor *sup
 	spec       ChildSpec
 	dieChan    chan bool
-	isAlive    bool
-	m          *sync.RWMutex
+
+	ready chan bool
 }
 
 //
@@ -54,142 +51,123 @@ type Initer struct {
 //TODO check that callbacks are defines. if not return
 func (a *actor) start(init Initer, messages []MessageInterface) (*actor, error) {
 
-	a.m = &sync.RWMutex{}
 	var err error
-
-	a.m.Lock()
 	a.state, err = init.Fn(init.Args)
 	if err != nil {
 		return nil, err
 	}
+
 	a.messageChanSync = make(chan MessageInterface)
-	a.messageChanAsync = make(chan MessageInterface, 1000)
+	a.messageChanAsync = make(chan MessageInterface)
 	a.replyChan = make(chan Reply)
 
-	a.tmb = &tomb.Tomb{}
-
-	a.messages = make(map[string]struct{})
 	a.pid = newPid()
+	a.initer = init
+	a.messages = make(map[string]struct{})
 	for _, m := range messages {
 		a.messages[m.GetType()] = struct{}{}
 	}
 
-	a.initer = init
-	a.tmb.Go(a.loop)
-
-	go func() error {
-		select {
-		case <-a.tmb.Dying():
-
-			//a.isAlive = false
-			//err := a.tmb.Wait()
-			//close(a.messageChanAsync)
-			//close(a.messageChanSync)
-			//close(a.replyChan)
-			//return nil
-
-			a.handelDie(true)
-			return a.tmb.Wait()
+	//
+	stopCh := make(chan error, 1)
+	go func() {
+		stopErr := <-stopCh
+		if stopErr != nil {
+			a.handelDie(stopErr)
 		}
+		close(stopCh)
 	}()
 
-	a.isAlive = true
-	a.m.Unlock()
+	//set actor ready
+	a.ready = make(chan bool)
+	go a.loop(stopCh, a.ready)
+	go func() {
+		a.ready <- true
+	}()
 	return a, nil
 }
 
 //HandleCall makes sync actor call
 func (a *actor) HandleCall(message MessageInterface) Reply {
-	//recover from panic while writing to chan when routineis dying
-	defer func() {
-		recover()
-		//return Reply{fmt.Errorf("actor_dead"), nil}
-	}()
-	if !a.isAlive {
+	if ready := <-a.ready; !ready {
 		return Reply{fmt.Errorf("actor_dead"), nil}
 	}
-
 	a.messageChanSync <- message
 	return <-a.replyChan
 }
 
+var (
+	ERR, OK int
+	m       = &sync.RWMutex{}
+)
+
 //HandleCast makes async call to actor
 func (a *actor) HandleCast(message MessageInterface) Reply {
-	//recover from panic while writing to chan when routineis dying
-	defer func() {
-		recover()
-		//return Reply{fmt.Errorf("actor_dead"), nil}
-	}()
-	if !a.isAlive {
+	if ready := <-a.ready; !ready {
+		m.Lock()
+		ERR++
+		m.Unlock()
 		return Reply{fmt.Errorf("actor_dead"), nil}
 	}
-
-	//fmt.Println(a.isAlive, a.tmb.Alive())
+	m.Lock()
+	OK++
+	m.Unlock()
 	a.messageChanAsync <- message
-
 	return Reply{nil, "ok"}
 }
 
 //Stop stops an actor
 func (a *actor) stop() error {
-	a.tmb.Kill(nil)
-	return a.tmb.Wait()
+	return nil
 }
 
 //GetStopReason returns error led to actor stop
 func (a *actor) getStopReason() error {
-	return a.tmb.Err()
+	return nil
 }
 
 //main select loop
-func (a *actor) loop() error {
+func (a *actor) loop(stopChan chan error, readyChan chan bool) error {
 	for {
 
 		select {
+
 		case msg := <-a.messageChanSync:
-			//if msg != nil {
-			//if a.isAlive {
 			reply := msg.Handle(a.state)
 			a.replyChan <- reply.ActorReply
+			a.state = reply.State
+
 			if reply.Stop {
-				//a.tmb.Kill(reply.Err)
-				//a.isAlive = false
-				//a.dieChan <- true
-				//a.handelDie(true)
+				close(readyChan)
+				a.handelDie(reply.Err)
 				return reply.Err
 			}
-			a.state = reply.State
-			//}
+
+			readyChan <- true
 		case msg := <-a.messageChanAsync:
-			//if msg != nil {
-			//if a.isAlive {
 			reply := msg.Handle(a.state)
+			a.state = reply.State
+
 			if reply.Stop {
-				//a.tmb.Kill(reply.Err)
-				//a.isAlive = false
-				//a.dieChan <- true
-				//a.handelDie(true)
+				close(readyChan)
+				a.handelDie(reply.Err)
 				return reply.Err
 			}
-			a.state = reply.State
-			//}
+			readyChan <- true
 		}
+
 	}
 }
 
-func (a *actor) handelDie(restart bool) {
-	//defer func() { recover() }()
-	//if !a.isAlive {
-	//fmt.Println("HANDLE KILL")
-	//panic("sss")
-	//a.supervisor.supervisorRestartChild(a)
-	a.dieChan <- true
-	if a.isAlive {
-		close(a.messageChanAsync)
-		close(a.messageChanSync)
-		close(a.replyChan)
-	}
-	a.isAlive = false
+var RS int
 
-	//}
+func (a *actor) handelDie(err error) {
+	close(a.messageChanAsync)
+	close(a.messageChanSync)
+	close(a.replyChan)
+
+	if err != nil {
+		RS++
+		a.dieChan <- true
+	}
 }
