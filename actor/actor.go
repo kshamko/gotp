@@ -2,7 +2,6 @@ package actor
 
 import (
 	"fmt"
-	"sync"
 )
 
 /*const (
@@ -20,8 +19,6 @@ type Reply struct {
 
 //StateInterface type is for internal actor state
 type StateInterface interface{}
-
-//func Start(a ActorInterface)
 
 //Actor struct
 type actor struct {
@@ -60,6 +57,7 @@ func (a *actor) start(init Initer, messages []MessageInterface) (*actor, error) 
 	a.messageChanSync = make(chan MessageInterface)
 	a.messageChanAsync = make(chan MessageInterface)
 	a.replyChan = make(chan Reply)
+	a.dieChan = make(chan bool)
 
 	a.pid = newPid()
 	a.initer = init
@@ -68,22 +66,14 @@ func (a *actor) start(init Initer, messages []MessageInterface) (*actor, error) 
 		a.messages[m.GetType()] = struct{}{}
 	}
 
-	//
-	stopCh := make(chan error, 1)
-	go func() {
-		stopErr := <-stopCh
-		if stopErr != nil {
-			a.handelDie(stopErr)
-		}
-		close(stopCh)
-	}()
-
 	//set actor ready
 	a.ready = make(chan bool)
-	go a.loop(stopCh, a.ready)
+	go a.loop(a.ready)
 	go func() {
 		a.ready <- true
+		return
 	}()
+
 	return a, nil
 }
 
@@ -96,22 +86,11 @@ func (a *actor) HandleCall(message MessageInterface) Reply {
 	return <-a.replyChan
 }
 
-var (
-	ERR, OK int
-	m       = &sync.RWMutex{}
-)
-
 //HandleCast makes async call to actor
 func (a *actor) HandleCast(message MessageInterface) Reply {
 	if ready := <-a.ready; !ready {
-		m.Lock()
-		ERR++
-		m.Unlock()
 		return Reply{fmt.Errorf("actor_dead"), nil}
 	}
-	m.Lock()
-	OK++
-	m.Unlock()
 	a.messageChanAsync <- message
 	return Reply{nil, "ok"}
 }
@@ -127,7 +106,7 @@ func (a *actor) getStopReason() error {
 }
 
 //main select loop
-func (a *actor) loop(stopChan chan error, readyChan chan bool) error {
+func (a *actor) loop(readyChan chan bool) error {
 	for {
 
 		select {
@@ -142,8 +121,8 @@ func (a *actor) loop(stopChan chan error, readyChan chan bool) error {
 				a.handelDie(reply.Err)
 				return reply.Err
 			}
-
 			readyChan <- true
+
 		case msg := <-a.messageChanAsync:
 			reply := msg.Handle(a.state)
 			a.state = reply.State
@@ -159,15 +138,13 @@ func (a *actor) loop(stopChan chan error, readyChan chan bool) error {
 	}
 }
 
-var RS int
-
 func (a *actor) handelDie(err error) {
 	close(a.messageChanAsync)
 	close(a.messageChanSync)
 	close(a.replyChan)
 
 	if err != nil {
-		RS++
 		a.dieChan <- true
+		close(a.dieChan)
 	}
 }

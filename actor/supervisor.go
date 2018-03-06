@@ -1,7 +1,6 @@
 package actor
 
 import (
-	"sync"
 	"time"
 )
 
@@ -16,7 +15,6 @@ const (
 type sup struct {
 	actor
 	supType int
-	m       sync.Mutex
 }
 
 type ChildSpec struct {
@@ -34,7 +32,7 @@ type supState struct {
 
 //type actorData
 
-//SupervisorStart
+//SupervisorStart starta a supervisor
 func SupervisorStart(supType int) (*sup, error) {
 	msgs := []MessageInterface{
 		msgStartChild{},
@@ -63,8 +61,8 @@ func (s *sup) supervisorRestartChild(a *actor) error {
 }
 
 type msgRestartChild struct {
-	a *actor
-	s *sup
+	child *actor
+	sup   *sup
 }
 
 func (m msgRestartChild) GetType() string {
@@ -72,24 +70,18 @@ func (m msgRestartChild) GetType() string {
 }
 
 func (m msgRestartChild) Handle(state StateInterface) MessageReply {
-	dieChan := make(chan bool)
-
-	messages := m.a.messages
-	newa, _ := m.a.start(m.a.initer, []MessageInterface{})
-
+	messages := m.child.messages
+	newa, _ := m.child.start(m.child.initer, []MessageInterface{})
 	newa.messages = messages
-	newa.dieChan = dieChan
-	m.a = nil
 
 	s := state.(supState)
 	s.restarts++
 
 	go func() {
-		restart := <-dieChan
+		restart := <-newa.dieChan
 		if restart {
-			m.s.supervisorRestartChild(newa)
+			m.sup.supervisorRestartChild(newa)
 		}
-		close(dieChan)
 	}()
 
 	return MessageReply{
@@ -99,6 +91,7 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 
 }
 
+//
 type msgStartChild struct {
 	spec ChildSpec
 	sup  *sup
@@ -106,10 +99,7 @@ type msgStartChild struct {
 
 func (m msgStartChild) Handle(state StateInterface) MessageReply {
 
-	dieChan := make(chan bool)
-	a := &actor{
-		dieChan: dieChan,
-	}
+	a := &actor{}
 	actor, err := a.start(m.spec.Init, m.spec.Messages)
 
 	s := state.(supState)
@@ -120,17 +110,15 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 			State:      s,
 		}
 	}
-	//s.children = append(s.children, a)
 
 	actor.supervisor = m.sup
 	actor.spec = m.spec
 
 	go func() {
-		restart := <-dieChan
+		restart := <-actor.dieChan
 		if restart {
-			m.sup.supervisorRestartChild(a)
+			m.sup.supervisorRestartChild(actor)
 		}
-		close(dieChan)
 	}()
 
 	return MessageReply{

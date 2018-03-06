@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -78,9 +79,8 @@ func main() {
 		},
 	}
 
-	worker, err := sup.SupervisorStartChild(workerSpec)
+	worker, _ := sup.SupervisorStartChild(workerSpec)
 
-	fmt.Printf("WORKER_ACTOR: %v\n Err:%v\n\n", worker, err)
 	p := sync.Mutex{}
 	w := sync.WaitGroup{}
 	msgs := 0
@@ -94,6 +94,7 @@ func main() {
 				p.Unlock()
 				worker.HandleCast(addBalanceMsg{1})
 			}
+
 			w.Done()
 		}()
 	}
@@ -101,6 +102,7 @@ func main() {
 	w.Wait()
 
 	time.Sleep(1 * time.Second)
-	fmt.Printf("Get Balance: %+v, \n\n %+v\n", worker.HandleCall(getBalanceMsg{}), sup)
-	fmt.Println(msgs, actor.RS, actor.OK, actor.ERR)
+	fmt.Printf("Get Balance: %+v\n", worker.HandleCall(getBalanceMsg{}))
+	fmt.Println("Msgs processed:", msgs)
+	fmt.Println("Routines: ", runtime.NumGoroutine())
 }
