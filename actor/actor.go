@@ -55,14 +55,6 @@ func (a *actor) start(init Initer, messages []MessageInterface) error {
 	}
 
 	return a.restart()
-	//set actor ready
-	/*a.ready = make(chan bool)
-	go a.loop(a.ready)
-	go func() {
-		a.ready <- true
-		return
-	}()
-	return nil*/
 }
 
 func (a *actor) restart() error {
@@ -111,9 +103,7 @@ func (a *actor) getStopReason() error {
 //main select loop
 func (a *actor) loop(readyChan chan bool) error {
 	for {
-
 		select {
-
 		case msg := <-a.messageChanSync:
 			reply := msg.Handle(a.state)
 			a.replyChan <- reply.ActorReply
@@ -121,8 +111,7 @@ func (a *actor) loop(readyChan chan bool) error {
 
 			if reply.Stop {
 				close(readyChan)
-				a.handelDie(reply.Err)
-				return reply.Err
+				return a.handleDie(reply.Err)
 			}
 			readyChan <- true
 
@@ -132,22 +121,19 @@ func (a *actor) loop(readyChan chan bool) error {
 
 			if reply.Stop {
 				close(readyChan)
-				a.handelDie(reply.Err)
-				return reply.Err
+				return a.handleDie(reply.Err)
 			}
 			readyChan <- true
 		}
-
 	}
 }
 
-func (a *actor) handelDie(err error) {
+func (a *actor) handleDie(err error) error {
 	close(a.messageChanAsync)
 	close(a.messageChanSync)
 	close(a.replyChan)
-
 	if err != nil {
 		a.dieChan <- true
-		close(a.dieChan)
 	}
+	return err
 }

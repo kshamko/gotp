@@ -85,7 +85,7 @@ func main() {
 	w := sync.WaitGroup{}
 	msgs := 0
 
-	for i := 0; i < 40000; i++ {
+	for i := 0; i < 60000; i++ {
 		w.Add(1)
 		go func() {
 			for j := 0; j < 20; j++ {

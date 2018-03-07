@@ -26,8 +26,13 @@ type ChildSpec struct {
 }
 
 type supState struct {
-	children []*actor
+	children *actor
 	restarts int
+}
+
+type child struct {
+	startTime time.Time
+	restarts  int
 }
 
 //type actorData
@@ -36,6 +41,7 @@ type supState struct {
 func SupervisorStart(supType int) (*Sup, error) {
 	msgs := []MessageInterface{
 		msgStartChild{},
+		msgRestartChild{},
 	}
 	s := &Sup{supType: supType}
 
@@ -89,6 +95,7 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 
 	go func() {
 		restart := <-m.child.dieChan
+		close(m.child.dieChan)
 		if restart {
 			m.sup.supervisorRestartChild(m.child)
 		}
@@ -125,6 +132,7 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 
 	go func() {
 		restart := <-actor.dieChan
+		close(actor.dieChan)
 		if restart {
 			m.sup.supervisorRestartChild(actor)
 		}
