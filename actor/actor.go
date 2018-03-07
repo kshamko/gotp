@@ -4,13 +4,6 @@ import (
 	"fmt"
 )
 
-/*const (
-	//ReplyOK - ok status for actor response
-	ReplyOK   = "ok"
-	ReplyErr  = "error"
-	ReplyDead = "dead"
-)*/
-
 //Reply is send by HandleCall or HandleCast
 type Reply struct {
 	Err      error
@@ -31,7 +24,7 @@ type actor struct {
 
 	initer Initer
 
-	supervisor *sup
+	supervisor *Sup
 	spec       ChildSpec
 	dieChan    chan bool
 
@@ -46,27 +39,37 @@ type Initer struct {
 
 //Start creates new actor
 //TODO check that callbacks are defines. if not return
-func (a *actor) start(init Initer, messages []MessageInterface) (*actor, error) {
+func (a *actor) start(init Initer, messages []MessageInterface) error {
 
 	var err error
 	a.state, err = init.Fn(init.Args)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	a.messageChanSync = make(chan MessageInterface)
-	a.messageChanAsync = make(chan MessageInterface)
-	a.replyChan = make(chan Reply)
-	a.dieChan = make(chan bool)
-
 	a.pid = newPid()
 	a.initer = init
+
 	a.messages = make(map[string]struct{})
 	for _, m := range messages {
 		a.messages[m.GetType()] = struct{}{}
 	}
 
+	return a.restart()
 	//set actor ready
+	/*a.ready = make(chan bool)
+	go a.loop(a.ready)
+	go func() {
+		a.ready <- true
+		return
+	}()
+	return nil*/
+}
+
+func (a *actor) restart() error {
+	a.messageChanSync = make(chan MessageInterface)
+	a.messageChanAsync = make(chan MessageInterface)
+	a.replyChan = make(chan Reply)
+	a.dieChan = make(chan bool)
 	a.ready = make(chan bool)
 	go a.loop(a.ready)
 	go func() {
@@ -74,7 +77,7 @@ func (a *actor) start(init Initer, messages []MessageInterface) (*actor, error) 
 		return
 	}()
 
-	return a, nil
+	return nil
 }
 
 //HandleCall makes sync actor call

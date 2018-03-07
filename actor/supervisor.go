@@ -12,7 +12,7 @@ const (
 )
 
 //Sup
-type sup struct {
+type Sup struct {
 	actor
 	supType int
 }
@@ -32,12 +32,12 @@ type supState struct {
 
 //type actorData
 
-//SupervisorStart starta a supervisor
-func SupervisorStart(supType int) (*sup, error) {
+//SupervisorStart starts a supervisor
+func SupervisorStart(supType int) (*Sup, error) {
 	msgs := []MessageInterface{
 		msgStartChild{},
 	}
-	s := &sup{supType: supType}
+	s := &Sup{supType: supType}
 
 	initer := Initer{
 		Fn: func(p interface{}) (StateInterface, error) {
@@ -50,19 +50,23 @@ func SupervisorStart(supType int) (*sup, error) {
 }
 
 //SupervisorStartChild starts child
-func (s *sup) SupervisorStartChild(spec ChildSpec) (*actor, error) {
+func (s *Sup) SupervisorStartChild(spec ChildSpec) (*actor, error) {
 	res := s.HandleCall(msgStartChild{spec, s})
 	return res.Response.(*actor), nil
 }
 
-func (s *sup) supervisorRestartChild(a *actor) error {
+func (s *Sup) supervisorRestartChild(a *actor) error {
 	s.HandleCall(msgRestartChild{a, s})
 	return nil
 }
 
+//
+// SUPERVISOR ACTOR MESSAGES
+//
+
 type msgRestartChild struct {
 	child *actor
-	sup   *sup
+	sup   *Sup
 }
 
 func (m msgRestartChild) GetType() string {
@@ -70,37 +74,42 @@ func (m msgRestartChild) GetType() string {
 }
 
 func (m msgRestartChild) Handle(state StateInterface) MessageReply {
-	messages := m.child.messages
-	newa, _ := m.child.start(m.child.initer, []MessageInterface{})
-	newa.messages = messages
 
 	s := state.(supState)
+
+	err := m.child.restart()
+	if err != nil {
+		return MessageReply{
+			ActorReply: Reply{err, nil},
+			State:      s,
+		}
+	}
+
 	s.restarts++
 
 	go func() {
-		restart := <-newa.dieChan
+		restart := <-m.child.dieChan
 		if restart {
-			m.sup.supervisorRestartChild(newa)
+			m.sup.supervisorRestartChild(m.child)
 		}
 	}()
 
 	return MessageReply{
-		ActorReply: Reply{nil, newa},
+		ActorReply: Reply{nil, nil},
 		State:      s,
 	}
-
 }
 
 //
 type msgStartChild struct {
 	spec ChildSpec
-	sup  *sup
+	sup  *Sup
 }
 
 func (m msgStartChild) Handle(state StateInterface) MessageReply {
 
-	a := &actor{}
-	actor, err := a.start(m.spec.Init, m.spec.Messages)
+	actor := &actor{}
+	err := actor.start(m.spec.Init, m.spec.Messages)
 
 	s := state.(supState)
 
