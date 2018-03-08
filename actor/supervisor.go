@@ -1,6 +1,7 @@
 package actor
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -26,13 +27,14 @@ type ChildSpec struct {
 }
 
 type supState struct {
-	children *actor
+	children map[string]supChild
 	restarts int
 }
 
-type child struct {
+type supChild struct {
 	startTime time.Time
 	restarts  int
+	actor     actorInterface
 }
 
 //type actorData
@@ -47,7 +49,9 @@ func SupervisorStart(supType int) (*Sup, error) {
 
 	initer := Initer{
 		Fn: func(p interface{}) (StateInterface, error) {
-			return supState{}, nil
+			return supState{
+				children: make(map[string]supChild),
+			}, nil
 		},
 	}
 
@@ -83,6 +87,24 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 
 	s := state.(supState)
 
+	//s.children[m.child.pid.id].restarts++
+
+	childStats := s.children[m.child.pid.id]
+	childStats.restarts++
+	s.children[m.child.pid.id] = childStats
+	fmt.Println("restarts ", childStats.restarts)
+
+	if childStats.restarts > m.child.spec.RestartCount {
+		//panic("ggg")
+		return MessageReply{
+			ActorReply: Reply{fmt.Errorf("actor_totally_dead"), nil},
+			State:      s,
+		}
+	}
+
+	//if m.child.spec.RestartRetryIn
+	//afterChan := time.After(m.child.spec.RestartRetryIn)
+
 	err := m.child.restart()
 	if err != nil {
 		return MessageReply{
@@ -92,14 +114,15 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 	}
 
 	s.restarts++
+	mon := newMonitor(m.sup, m.child)
+	//go func() {
+	//<-time.Tick(m.child.spec.RestartRetryIn)
 
-	go func() {
-		restart := <-m.child.dieChan
-		close(m.child.dieChan)
-		if restart {
-			m.sup.supervisorRestartChild(m.child)
-		}
-	}()
+	mon.start(func(sup, actr actorInterface) {
+		time.Sleep(m.child.spec.RestartRetryIn)
+		sup.(*Sup).supervisorRestartChild(actr.(*actor))
+	})
+	//}()
 
 	return MessageReply{
 		ActorReply: Reply{nil, nil},
@@ -115,9 +138,10 @@ type msgStartChild struct {
 
 func (m msgStartChild) Handle(state StateInterface) MessageReply {
 
-	actor := &actor{}
-	err := actor.start(m.spec.Init, m.spec.Messages)
+	a := &actor{}
+	a.spec = m.spec
 
+	err := a.start(m.spec.Init, m.spec.Messages)
 	s := state.(supState)
 
 	if err != nil {
@@ -127,19 +151,15 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 		}
 	}
 
-	actor.supervisor = m.sup
-	actor.spec = m.spec
-
-	go func() {
-		restart := <-actor.dieChan
-		close(actor.dieChan)
-		if restart {
-			m.sup.supervisorRestartChild(actor)
-		}
-	}()
+	//setup monitor
+	mon := newMonitor(m.sup, a)
+	mon.start(func(sup, actr actorInterface) {
+		//time.Sleep(actr.(*actor).spec.RestartRetryIn)
+		sup.(*Sup).supervisorRestartChild(actr.(*actor))
+	})
 
 	return MessageReply{
-		ActorReply: Reply{nil, actor},
+		ActorReply: Reply{nil, a},
 		State:      s,
 	}
 }

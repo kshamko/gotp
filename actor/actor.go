@@ -13,6 +13,16 @@ type Reply struct {
 //StateInterface type is for internal actor state
 type StateInterface interface{}
 
+type actorInterface interface {
+	start(init Initer, messages []MessageInterface) error
+	restart() error
+	HandleCall(message MessageInterface) Reply
+	HandleCast(message MessageInterface) Reply
+	loop(readyChan chan bool) error
+	stop() error
+	setMonitor(m *monitor)
+}
+
 //Actor struct
 type actor struct {
 	pid              pid
@@ -21,12 +31,10 @@ type actor struct {
 	replyChan        chan Reply
 	state            StateInterface
 	messages         map[string]struct{}
-
-	initer Initer
-
-	supervisor *Sup
-	spec       ChildSpec
-	dieChan    chan bool
+	initer           Initer
+	spec             ChildSpec
+	monitor          *monitor
+	//dieChan    chan bool
 
 	ready chan bool
 }
@@ -61,7 +69,7 @@ func (a *actor) restart() error {
 	a.messageChanSync = make(chan MessageInterface)
 	a.messageChanAsync = make(chan MessageInterface)
 	a.replyChan = make(chan Reply)
-	a.dieChan = make(chan bool)
+	//a.dieChan = make(chan bool)
 	a.ready = make(chan bool)
 	go a.loop(a.ready)
 	go func() {
@@ -100,6 +108,12 @@ func (a *actor) getStopReason() error {
 	return nil
 }
 
+//GetStopReason returns error led to actor stop
+func (a *actor) setMonitor(m *monitor) {
+	a.monitor = m
+	//return nil
+}
+
 //main select loop
 func (a *actor) loop(readyChan chan bool) error {
 	for {
@@ -107,23 +121,24 @@ func (a *actor) loop(readyChan chan bool) error {
 		case msg := <-a.messageChanSync:
 			reply := msg.Handle(a.state)
 			a.replyChan <- reply.ActorReply
-			a.state = reply.State
 
 			if reply.Stop {
 				close(readyChan)
 				return a.handleDie(reply.Err)
 			}
+			a.state = reply.State
 			readyChan <- true
 
 		case msg := <-a.messageChanAsync:
 			reply := msg.Handle(a.state)
-			a.state = reply.State
 
 			if reply.Stop {
 				close(readyChan)
 				return a.handleDie(reply.Err)
 			}
+			a.state = reply.State
 			readyChan <- true
+
 		}
 	}
 }
@@ -132,8 +147,9 @@ func (a *actor) handleDie(err error) error {
 	close(a.messageChanAsync)
 	close(a.messageChanSync)
 	close(a.replyChan)
-	if err != nil {
-		a.dieChan <- true
-	}
+	//if err != nil {
+	a.monitor.trigger(err)
+	//a.dieChan <- true
+	//}
 	return err
 }

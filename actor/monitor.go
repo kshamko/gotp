@@ -1,12 +1,13 @@
 package actor
 
 type monitor struct {
-	parent  *actor
-	child   *actor
+	parent  actorInterface
+	child   actorInterface
 	errChan chan error
+	dead    bool
 }
 
-func newMonitor(parent, child *actor) *monitor {
+func newMonitor(parent, child actorInterface) *monitor {
 	return &monitor{
 		parent:  parent,
 		child:   child,
@@ -14,15 +15,22 @@ func newMonitor(parent, child *actor) *monitor {
 	}
 }
 
-func (m *monitor) start(restartFunc func(m *monitor)) {
-
+func (m *monitor) start(restartFunc func(parent actorInterface, child actorInterface)) {
+	m.child.setMonitor(m)
 	go func() {
 		err := <-m.errChan
-		close(m.errChan)
 		if err != nil {
-			//m.sup.supervisorRestartChild(m.child)
-			restartFunc(m)
+			restartFunc(m.parent, m.child)
 		}
+		close(m.errChan)
 	}()
+}
 
+func (m *monitor) trigger(err error) {
+	//f !m.dead {
+	go func(m *monitor) {
+		m.errChan <- err
+	}(m)
+	//	m.dead = true
+	//}
 }

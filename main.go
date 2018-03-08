@@ -22,7 +22,7 @@ type addBalanceMsg struct {
 func (m addBalanceMsg) Handle(state actor.StateInterface) actor.MessageReply {
 	st := state.(st)
 	st.bal += m.inc
-	if st.bal > 6780 {
+	if st.bal > 6783 {
 
 		return actor.MessageReply{
 			ActorReply: actor.Reply{
@@ -66,7 +66,9 @@ func main() {
 	sup, _ := actor.SupervisorStart(actor.SupOneForOne)
 
 	workerSpec := actor.ChildSpec{
-		IsSupervisor: true,
+		IsSupervisor:   true,
+		RestartCount:   5,
+		RestartRetryIn: 1 * time.Second,
 		Init: actor.Initer{
 			Fn: func(p interface{}) (actor.StateInterface, error) {
 				return st{p.(int)}, nil
@@ -92,17 +94,18 @@ func main() {
 				p.Lock()
 				msgs++
 				p.Unlock()
-				worker.HandleCast(addBalanceMsg{1})
+				worker.HandleCast(addBalanceMsg{2})
 			}
-
 			w.Done()
 		}()
+		//time.Sleep(2 * time.Millisecond)
 	}
 
 	w.Wait()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 	fmt.Printf("Get Balance: %+v\n", worker.HandleCall(getBalanceMsg{}))
 	fmt.Println("Msgs processed:", msgs)
 	fmt.Println("Routines: ", runtime.NumGoroutine())
+	fmt.Println(sup)
 }
