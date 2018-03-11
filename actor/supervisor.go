@@ -32,9 +32,10 @@ type supState struct {
 }
 
 type supChild struct {
-	startTime time.Time
-	restarts  int
-	actor     actorInterface
+	startTime  time.Time
+	restarts   int
+	actor      actorInterface
+	supervisor bool
 }
 
 //type actorData
@@ -95,7 +96,6 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 	fmt.Println("restarts ", childStats.restarts)
 
 	if childStats.restarts > m.child.spec.RestartCount {
-		//panic("ggg")
 		return MessageReply{
 			ActorReply: Reply{fmt.Errorf("actor_totally_dead"), nil},
 			State:      s,
