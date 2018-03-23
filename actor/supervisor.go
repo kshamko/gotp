@@ -28,7 +28,6 @@ type ChildSpec struct {
 
 type supState struct {
 	children map[string]supChild
-	restarts int
 }
 
 type supChild struct {
@@ -66,6 +65,7 @@ func (s *Sup) SupervisorStartChild(spec ChildSpec) (*actor, error) {
 	return res.Response.(*actor), nil
 }
 
+//
 func (s *Sup) supervisorRestartChild(a *actor) error {
 	s.HandleCall(msgRestartChild{a, s})
 	return nil
@@ -87,23 +87,21 @@ func (m msgRestartChild) GetType() string {
 func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 
 	s := state.(supState)
-
-	//s.children[m.child.pid.id].restarts++
-
 	childStats := s.children[m.child.pid.id]
+	if childStats.startTime.Add(2*m.child.spec.RestartRetryIn).UnixNano() < time.Now().UnixNano() {
+		childStats.restarts = 0
+	}
+
 	childStats.restarts++
-	s.children[m.child.pid.id] = childStats
-	fmt.Println("restarts ", childStats.restarts)
 
 	if childStats.restarts > m.child.spec.RestartCount {
+		delete(s.children, m.child.pid.id)
+
 		return MessageReply{
 			ActorReply: Reply{fmt.Errorf("actor_totally_dead"), nil},
 			State:      s,
 		}
 	}
-
-	//if m.child.spec.RestartRetryIn
-	//afterChan := time.After(m.child.spec.RestartRetryIn)
 
 	err := m.child.restart()
 	if err != nil {
@@ -113,16 +111,15 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 		}
 	}
 
-	s.restarts++
+	//setup monitor
 	mon := newMonitor(m.sup, m.child)
-	//go func() {
-	//<-time.Tick(m.child.spec.RestartRetryIn)
-
 	mon.start(func(sup, actr actorInterface) {
 		time.Sleep(m.child.spec.RestartRetryIn)
 		sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
-	//}()
+
+	childStats.startTime = time.Now()
+	s.children[m.child.pid.id] = childStats
 
 	return MessageReply{
 		ActorReply: Reply{nil, nil},
@@ -143,7 +140,6 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 
 	err := a.start(m.spec.Init, m.spec.Messages)
 	s := state.(supState)
-
 	if err != nil {
 		return MessageReply{
 			ActorReply: Reply{err, nil},
@@ -154,9 +150,16 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 	//setup monitor
 	mon := newMonitor(m.sup, a)
 	mon.start(func(sup, actr actorInterface) {
-		//time.Sleep(actr.(*actor).spec.RestartRetryIn)
+		time.Sleep(a.spec.RestartRetryIn)
 		sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
+
+	//add actor to supervisor state
+	s.children[a.pid.id] = supChild{
+		actor:     a,
+		restarts:  0,
+		startTime: time.Now(),
+	}
 
 	return MessageReply{
 		ActorReply: Reply{nil, a},

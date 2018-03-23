@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"runtime"
-	"sync"
 	"time"
 
 	"github.com/kshamko/gotp/actor"
@@ -82,8 +80,9 @@ func main() {
 	}
 
 	worker, _ := sup.SupervisorStartChild(workerSpec)
+	worker.HandleCast(addBalanceMsg{2})
 
-	p := sync.Mutex{}
+	/*p := sync.Mutex{}
 	w := sync.WaitGroup{}
 	msgs := 0
 
@@ -101,11 +100,11 @@ func main() {
 		//time.Sleep(2 * time.Millisecond)
 	}
 
-	w.Wait()
+	w.Wait()*/
 
-	time.Sleep(2 * time.Second)
+	/*time.Sleep(2 * time.Second)
 	fmt.Printf("Get Balance: %+v\n", worker.HandleCall(getBalanceMsg{}))
 	fmt.Println("Msgs processed:", msgs)
 	fmt.Println("Routines: ", runtime.NumGoroutine())
-	fmt.Println(sup)
+	fmt.Println(sup)*/
 }
