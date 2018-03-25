@@ -150,7 +150,7 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 	//setup monitor
 	mon := newMonitor(m.sup, a)
 	mon.start(func(sup, actr actorInterface) {
-		time.Sleep(a.spec.RestartRetryIn)
+		//time.Sleep(a.spec.RestartRetryIn)
 		sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
 
