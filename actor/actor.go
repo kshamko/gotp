@@ -1,7 +1,12 @@
 package actor
 
 import (
-	"fmt"
+	"errors"
+)
+
+var (
+	ErrRestarting = errors.New("actor: in restarting state")
+	ErrDead       = errors.New("actor: dead")
 )
 
 //Reply is send by HandleCall or HandleCast
@@ -83,7 +88,7 @@ func (a *actor) restart() error {
 //HandleCall makes sync actor call
 func (a *actor) HandleCall(message MessageInterface) Reply {
 	if ready := <-a.ready; !ready {
-		return Reply{fmt.Errorf("actor_dead"), nil}
+		return Reply{ErrRestarting, nil}
 	}
 	a.messageChanSync <- message
 	return <-a.replyChan
@@ -92,7 +97,7 @@ func (a *actor) HandleCall(message MessageInterface) Reply {
 //HandleCast makes async call to actor
 func (a *actor) HandleCast(message MessageInterface) Reply {
 	if ready := <-a.ready; !ready {
-		return Reply{fmt.Errorf("actor_dead"), nil}
+		return Reply{ErrRestarting, nil}
 	}
 	a.messageChanAsync <- message
 	return Reply{nil, "ok"}
