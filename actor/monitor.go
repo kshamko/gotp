@@ -4,7 +4,6 @@ type monitor struct {
 	parent  actorInterface
 	child   actorInterface
 	errChan chan error
-	dead    bool
 }
 
 func newMonitor(parent, child actorInterface) *monitor {
@@ -15,14 +14,20 @@ func newMonitor(parent, child actorInterface) *monitor {
 	}
 }
 
-func (m *monitor) start(restartFunc func(parent actorInterface, child actorInterface)) {
+func (m *monitor) start(restartFunc func(parent actorInterface, child actorInterface) error) {
 	m.child.setMonitor(m)
 	go func() {
 		err := <-m.errChan
-		if err != nil {
-			restartFunc(m.parent, m.child)
-		}
 		close(m.errChan)
+
+		if err != nil {
+			restartErr := restartFunc(m.parent, m.child)
+			if restartErr != nil {
+				m.child.setDead(restartErr)
+			} else {
+				m.child.setAlive()
+			}
+		}
 	}()
 }
 

@@ -1,7 +1,6 @@
 package actor
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -67,8 +66,8 @@ func (s *Sup) SupervisorStartChild(spec ChildSpec) (*actor, error) {
 
 //
 func (s *Sup) supervisorRestartChild(a *actor) error {
-	s.HandleCall(msgRestartChild{a, s})
-	return nil
+	r := s.HandleCall(msgRestartChild{a, s})
+	return r.Err
 }
 
 //
@@ -98,7 +97,7 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 		delete(s.children, m.child.pid.id)
 
 		return MessageReply{
-			ActorReply: Reply{fmt.Errorf("actor_totally_dead"), nil},
+			ActorReply: Reply{ErrDead, nil},
 			State:      s,
 		}
 	}
@@ -113,9 +112,9 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 
 	//setup monitor
 	mon := newMonitor(m.sup, m.child)
-	mon.start(func(sup, actr actorInterface) {
+	mon.start(func(sup, actr actorInterface) error {
 		time.Sleep(m.child.spec.RestartRetryIn)
-		sup.(*Sup).supervisorRestartChild(actr.(*actor))
+		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
 
 	childStats.startTime = time.Now()
@@ -149,9 +148,8 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 
 	//setup monitor
 	mon := newMonitor(m.sup, a)
-	mon.start(func(sup, actr actorInterface) {
-		//time.Sleep(a.spec.RestartRetryIn)
-		sup.(*Sup).supervisorRestartChild(actr.(*actor))
+	mon.start(func(sup, actr actorInterface) error {
+		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
 
 	//add actor to supervisor state

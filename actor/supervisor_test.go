@@ -37,11 +37,16 @@ func TestSupervisorRestartChild(t *testing.T) {
 	assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
 
 	res1 := worker.HandleCall(addBalanceMsgWithErr{5})
-	assert.Equal(t, "actor_dead", res1.Err.Error())
+	assert.Equal(t, ErrRestarting.Error(), res1.Err.Error())
 
-	time.Sleep(210 * time.Millisecond)
-	worker.HandleCall(addBalanceMsgWithErr{5})
+	worker.WaitRestart()
 	time.Sleep(105 * time.Millisecond)
+
+	//time.Sleep(210 * time.Millisecond)
+	worker.HandleCall(addBalanceMsgWithErr{5})
+	//time.Sleep(105 * time.Millisecond)
+	worker.WaitRestart()
+
 	assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
 	worker.HandleCall(addBalanceMsgWithErr{5})
 
@@ -57,7 +62,7 @@ func TestSupervisorRestartChild(t *testing.T) {
 
 	time.Sleep(105 * time.Millisecond)
 	res = worker.HandleCall(addBalanceMsgWithErr{5})
-	assert.Equal(t, "actor_dead", res1.Err.Error())
+	assert.Equal(t, ErrRestarting.Error(), res1.Err.Error())
 	//assert.Equal(t, "balance_error", res.Err.Error())
 	//assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
 

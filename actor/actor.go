@@ -24,8 +24,10 @@ type actorInterface interface {
 	HandleCall(message MessageInterface) Reply
 	HandleCast(message MessageInterface) Reply
 	loop(readyChan chan bool) error
-	stop() error
+	//stop() error
 	setMonitor(m *monitor)
+	setAlive()
+	setDead(error)
 }
 
 //Actor struct
@@ -41,7 +43,8 @@ type actor struct {
 	monitor          *monitor
 	//dieChan    chan bool
 
-	ready chan bool
+	ready  chan bool
+	isDead chan error
 }
 
 //
@@ -70,6 +73,7 @@ func (a *actor) start(init Initer, messages []MessageInterface) error {
 	return a.restart()
 }
 
+//
 func (a *actor) restart() error {
 	a.messageChanSync = make(chan MessageInterface)
 	a.messageChanAsync = make(chan MessageInterface)
@@ -103,20 +107,22 @@ func (a *actor) HandleCast(message MessageInterface) Reply {
 	return Reply{nil, "ok"}
 }
 
-//Stop stops an actor
-func (a *actor) stop() error {
-	return nil
+//
+func (a *actor) WaitRestart() error {
+	return <-a.isDead
 }
 
-//GetStopReason returns error led to actor stop
-func (a *actor) getStopReason() error {
-	return nil
-}
-
-//GetStopReason returns error led to actor stop
+//
 func (a *actor) setMonitor(m *monitor) {
 	a.monitor = m
-	//return nil
+}
+
+func (a *actor) setDead(err error) {
+	a.isDead <- err
+}
+
+func (a *actor) setAlive() {
+	a.isDead <- nil
 }
 
 //main select loop
@@ -152,9 +158,8 @@ func (a *actor) handleDie(err error) error {
 	close(a.messageChanAsync)
 	close(a.messageChanSync)
 	close(a.replyChan)
-	//if err != nil {
-	a.monitor.trigger(err)
-	//a.dieChan <- true
-	//}
+	if a.monitor != nil {
+		a.monitor.trigger(err)
+	}
 	return err
 }
