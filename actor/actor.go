@@ -64,6 +64,7 @@ func (a *actor) start(init Initer, messages []MessageInterface) error {
 	}
 	a.pid = newPid()
 	a.initer = init
+	a.isDead = make(chan error)
 
 	a.messages = make(map[string]struct{})
 	for _, m := range messages {
@@ -109,7 +110,8 @@ func (a *actor) HandleCast(message MessageInterface) Reply {
 
 //
 func (a *actor) WaitRestart() error {
-	return <-a.isDead
+	err := <-a.isDead
+	return err
 }
 
 //

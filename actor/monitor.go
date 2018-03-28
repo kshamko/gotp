@@ -1,5 +1,7 @@
 package actor
 
+import "time"
+
 type monitor struct {
 	parent  actorInterface
 	child   actorInterface
@@ -15,19 +17,22 @@ func newMonitor(parent, child actorInterface) *monitor {
 }
 
 func (m *monitor) start(restartFunc func(parent actorInterface, child actorInterface) error) {
+
 	m.child.setMonitor(m)
+
 	go func() {
-		err := <-m.errChan
+		<-m.errChan
 		close(m.errChan)
 
-		if err != nil {
-			restartErr := restartFunc(m.parent, m.child)
-			if restartErr != nil {
-				m.child.setDead(restartErr)
-			} else {
-				m.child.setAlive()
-			}
+		//if err != nil {
+		time.Sleep(m.child.(*actor).spec.RestartRetryIn)
+		restartErr := restartFunc(m.parent, m.child)
+		if restartErr != nil {
+			m.child.setDead(restartErr)
+		} else {
+			m.child.setAlive()
 		}
+		//	}
 	}()
 }
 

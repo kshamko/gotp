@@ -14,7 +14,7 @@ func TestActorUnderLoad(t *testing.T) {
 
 	w := sync.WaitGroup{}
 
-	for i := 0; i < 40000; i++ {
+	for i := 0; i < 100; i++ {
 		w.Add(1)
 		go func() {
 			for j := 0; j < 100; j++ {
@@ -28,5 +28,5 @@ func TestActorUnderLoad(t *testing.T) {
 
 	res := worker.HandleCall(getBalanceMsg{})
 
-	assert.Equal(t, 4000056, res.Response.(int))
+	assert.Equal(t, 10056, res.Response.(int))
 }

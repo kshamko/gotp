@@ -9,7 +9,7 @@ func getWorketSpec() ChildSpec {
 	return ChildSpec{
 		IsSupervisor:   false,
 		RestartCount:   3,
-		RestartRetryIn: 100 * time.Millisecond,
+		RestartRetryIn: 1000 * time.Millisecond,
 		Init: Initer{
 			Fn: func(p interface{}) (StateInterface, error) {
 				return testChildState{p.(int)}, nil

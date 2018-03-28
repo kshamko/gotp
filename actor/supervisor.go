@@ -1,6 +1,7 @@
 package actor
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -113,7 +114,9 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 	//setup monitor
 	mon := newMonitor(m.sup, m.child)
 	mon.start(func(sup, actr actorInterface) error {
-		time.Sleep(m.child.spec.RestartRetryIn)
+		fmt.Println("call restart")
+		//panic(m.child.spec.RestartRetryIn)
+
 		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
 
@@ -149,6 +152,7 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 	//setup monitor
 	mon := newMonitor(m.sup, a)
 	mon.start(func(sup, actr actorInterface) error {
+		fmt.Println("call restart1")
 		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
 
