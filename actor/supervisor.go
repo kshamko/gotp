@@ -114,9 +114,8 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 	//setup monitor
 	mon := newMonitor(m.sup, m.child)
 	mon.start(func(sup, actr actorInterface) error {
-		fmt.Println("call restart")
-		//panic(m.child.spec.RestartRetryIn)
-
+		time.Sleep(actr.(*actor).spec.RestartRetryIn)
+		fmt.Println("call restart ", actr.(*actor).spec.RestartRetryIn)
 		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
 
@@ -152,7 +151,7 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 	//setup monitor
 	mon := newMonitor(m.sup, a)
 	mon.start(func(sup, actr actorInterface) error {
-		fmt.Println("call restart1")
+		fmt.Println("call start")
 		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
 	})
 

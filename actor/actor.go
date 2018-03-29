@@ -26,8 +26,6 @@ type actorInterface interface {
 	loop(readyChan chan bool) error
 	//stop() error
 	setMonitor(m *monitor)
-	setAlive()
-	setDead(error)
 }
 
 //Actor struct
@@ -43,8 +41,7 @@ type actor struct {
 	monitor          *monitor
 	//dieChan    chan bool
 
-	ready  chan bool
-	isDead chan error
+	ready chan bool
 }
 
 //
@@ -64,7 +61,6 @@ func (a *actor) start(init Initer, messages []MessageInterface) error {
 	}
 	a.pid = newPid()
 	a.initer = init
-	a.isDead = make(chan error)
 
 	a.messages = make(map[string]struct{})
 	for _, m := range messages {
@@ -110,21 +106,12 @@ func (a *actor) HandleCast(message MessageInterface) Reply {
 
 //
 func (a *actor) WaitRestart() error {
-	err := <-a.isDead
-	return err
+	return <-a.monitor.isDead
 }
 
 //
 func (a *actor) setMonitor(m *monitor) {
 	a.monitor = m
-}
-
-func (a *actor) setDead(err error) {
-	a.isDead <- err
-}
-
-func (a *actor) setAlive() {
-	a.isDead <- nil
 }
 
 //main select loop

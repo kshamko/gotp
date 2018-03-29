@@ -1,11 +1,10 @@
 package actor
 
-import "time"
-
 type monitor struct {
 	parent  actorInterface
 	child   actorInterface
 	errChan chan error
+	isDead  chan error
 }
 
 func newMonitor(parent, child actorInterface) *monitor {
@@ -13,6 +12,7 @@ func newMonitor(parent, child actorInterface) *monitor {
 		parent:  parent,
 		child:   child,
 		errChan: make(chan error),
+		isDead:  make(chan error, 1),
 	}
 }
 
@@ -21,23 +21,34 @@ func (m *monitor) start(restartFunc func(parent actorInterface, child actorInter
 	m.child.setMonitor(m)
 
 	go func() {
-		<-m.errChan
+		err := <-m.errChan
 		close(m.errChan)
 
-		//if err != nil {
-		time.Sleep(m.child.(*actor).spec.RestartRetryIn)
-		restartErr := restartFunc(m.parent, m.child)
-		if restartErr != nil {
-			m.child.setDead(restartErr)
-		} else {
-			m.child.setAlive()
+		if err != nil {
+			restartErr := restartFunc(m.parent, m.child)
+			if restartErr != nil {
+				m.setDead(restartErr)
+			} else {
+				m.setAlive()
+			}
 		}
-		//	}
 	}()
 }
 
 func (m *monitor) trigger(err error) {
-	go func(m *monitor) {
-		m.errChan <- err
-	}(m)
+	//go func(m *monitor) {
+	m.errChan <- err
+	//}(m)
+}
+
+func (m *monitor) setDead(err error) {
+	m.isDead <- err
+}
+
+func (m *monitor) setAlive() {
+	m.isDead <- nil
+}
+
+func (m *monitor) waitRestart() error {
+	return <-m.isDead
 }
