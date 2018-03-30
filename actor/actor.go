@@ -106,7 +106,7 @@ func (a *actor) HandleCast(message MessageInterface) Reply {
 
 //
 func (a *actor) WaitRestart() error {
-	return <-a.monitor.isDead
+	return a.monitor.waitRestart()
 }
 
 //

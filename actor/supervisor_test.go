@@ -5,6 +5,7 @@ package actor
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -32,50 +33,36 @@ func TestSupervisorRestartChild(t *testing.T) {
 	assert.Equal(t, 0, sup.state.(supState).children[worker.pid.id].restarts)
 
 	res := worker.HandleCall(addBalanceMsgWithErr{2})
+	worker.WaitRestart()
+	assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
+
 	worker.HandleCall(addBalanceMsgWithErr{2})
-	res1 := worker.HandleCall(addBalanceMsgWithErr{2})
+	res = worker.HandleCall(addBalanceMsgWithErr{2})
+	assert.Equal(t, ErrRestarting, res.Err)
 
-	err := worker.WaitRestart()
-
-	assert.Equal(t, "balance_error", res.Err.Error())
-	assert.Equal(t, ErrRestarting, res1.Err)
+	worker.WaitRestart()
+	assert.Equal(t, 2, sup.state.(supState).children[worker.pid.id].restarts)
 
 	res = worker.HandleCall(addBalanceMsgWithErr{2})
-	assert.Nil(t, err)
 	assert.Equal(t, "balance_error", res.Err.Error())
 
-	/*res := worker.HandleCall(addBalanceMsgWithErr{2})
+	err := worker.WaitRestart()
+	assert.Equal(t, ErrDead, err)
+}
+
+func TestSupervisorRecoverChild(t *testing.T) {
+	sup, _ := SupervisorStart(SupOneForAll)
+	worker, _ := sup.SupervisorStartChild(getWorketSpec())
+
 	worker.HandleCall(addBalanceMsgWithErr{2})
-	assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
-
-	res1 := worker.HandleCall(addBalanceMsgWithErr{5})
-	assert.Equal(t, ErrRestarting.Error(), res1.Err.Error())
-
-	worker.WaitRestart()
-	time.Sleep(105 * time.Millisecond)
-
-	//time.Sleep(210 * time.Millisecond)
-	worker.HandleCall(addBalanceMsgWithErr{5})
-	//time.Sleep(105 * time.Millisecond)
 	worker.WaitRestart()
 
-	assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
-	worker.HandleCall(addBalanceMsgWithErr{5})
-
-	time.Sleep(105 * time.Millisecond)
-	assert.Equal(t, "balance_error", res.Err.Error())
+	worker.HandleCall(addBalanceMsgWithErr{2})
+	worker.WaitRestart()
 	assert.Equal(t, 2, sup.state.(supState).children[worker.pid.id].restarts)
-	res = worker.HandleCall(addBalanceMsgWithErr{5})
 
-	time.Sleep(105 * time.Millisecond)
-	assert.Equal(t, "balance_error", res.Err.Error())
-	assert.Equal(t, 3, sup.state.(supState).children[worker.pid.id].restarts)
-	res = worker.HandleCall(addBalanceMsgWithErr{5})
-
-	time.Sleep(105 * time.Millisecond)
-	res = worker.HandleCall(addBalanceMsgWithErr{5})
-	assert.Equal(t, ErrRestarting.Error(), res1.Err.Error())
-	//assert.Equal(t, "balance_error", res.Err.Error())
-	//assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
-	*/
+	time.Sleep(30 * time.Millisecond)
+	worker.HandleCall(addBalanceMsgWithErr{2})
+	worker.WaitRestart()
+	assert.Equal(t, 1, sup.state.(supState).children[worker.pid.id].restarts)
 }

@@ -36,9 +36,7 @@ func (m *monitor) start(restartFunc func(parent actorInterface, child actorInter
 }
 
 func (m *monitor) trigger(err error) {
-	//go func(m *monitor) {
 	m.errChan <- err
-	//}(m)
 }
 
 func (m *monitor) setDead(err error) {
