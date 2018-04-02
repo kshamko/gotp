@@ -72,11 +72,19 @@ func (s *Sup) supervisorRestartChild(a *actor) error {
 
 //
 func (s *Sup) setupMonitor(child actorInterface) {
-	mon := newMonitor(s, child)
+
+	var restarter restartPolicy
+
+	if s.supType == SupOneForOne {
+		restarter = policyOneForOne{}
+	}
+
+	restarter.setupMonitor(s, child)
+	/*mon := newMonitor(s, child)
 	mon.start(func(sup, actr actorInterface) error {
 		time.Sleep(actr.(*actor).spec.RestartRetryIn)
 		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
-	})
+	})*/
 }
 
 func (s *Sup) checkChildStats(childInfo supChild) (int, error) {

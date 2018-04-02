@@ -11,14 +11,14 @@ import (
 )
 
 func TestSupervisorStart(t *testing.T) {
-	sup, err := SupervisorStart(SupOneForAll)
+	sup, err := SupervisorStart(SupOneForOne)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, sup.pid.id)
 	assert.Equal(t, 0, len(sup.state.(supState).children))
 }
 
 func TestSupervisorStartChild(t *testing.T) {
-	sup, _ := SupervisorStart(SupOneForAll)
+	sup, _ := SupervisorStart(SupOneForOne)
 
 	worker, err := sup.SupervisorStartChild(getWorketSpec())
 
@@ -28,7 +28,7 @@ func TestSupervisorStartChild(t *testing.T) {
 }
 
 func TestSupervisorRestartChild(t *testing.T) {
-	sup, _ := SupervisorStart(SupOneForAll)
+	sup, _ := SupervisorStart(SupOneForOne)
 	worker, _ := sup.SupervisorStartChild(getWorketSpec())
 	assert.Equal(t, 0, sup.state.(supState).children[worker.pid.id].restarts)
 
@@ -51,7 +51,7 @@ func TestSupervisorRestartChild(t *testing.T) {
 }
 
 func TestSupervisorRecoverChild(t *testing.T) {
-	sup, _ := SupervisorStart(SupOneForAll)
+	sup, _ := SupervisorStart(SupOneForOne)
 	worker, _ := sup.SupervisorStartChild(getWorketSpec())
 
 	worker.HandleCall(addBalanceMsgWithErr{2})
