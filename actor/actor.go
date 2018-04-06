@@ -26,6 +26,7 @@ type actorInterface interface {
 	init() error
 	loop(readyChan chan bool) error
 	setMonitor(m *monitor)
+	getPid() pid
 
 	HandleCall(message MessageInterface) Reply
 	HandleCast(message MessageInterface) Reply
@@ -119,6 +120,11 @@ func (a *Actor) init() error {
 //
 func (a *Actor) setMonitor(m *monitor) {
 	a.monitor = m
+}
+
+//
+func (a *Actor) getPid() pid {
+	return a.pid
 }
 
 //main select loop

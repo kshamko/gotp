@@ -79,8 +79,13 @@ func (s *Sup) StartChild(spec ChildSpec) (*Actor, error) {
 }
 
 //TerminateChild gracefully stops child
-func (s *Sup) TerminateChild() {
+func (s *Sup) TerminateChild(child actorInterface) {
 
+}
+
+func (s *Sup) children() map[string]supChild {
+	res := s.HandleCall(msgGetChildren{})
+	return res.Response.(map[string]supChild)
 }
 
 //
@@ -121,6 +126,23 @@ func (s *Sup) checkChildStats(childInfo supChild) (int, error) {
 //
 // SUPERVISOR ACTOR MESSAGES
 //
+
+type msgGetChildren struct{}
+
+func (m msgGetChildren) GetType() string {
+	return "get_children"
+}
+
+func (m msgGetChildren) Handle(state StateInterface) MessageReply {
+	s := state.(supState)
+	return MessageReply{
+		ActorReply: Reply{
+			Err:      nil,
+			Response: s.children,
+		},
+		State: s,
+	}
+}
 
 //
 type msgRestartChild struct {
