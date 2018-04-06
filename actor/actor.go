@@ -5,8 +5,11 @@ import (
 )
 
 var (
+	//ErrRestarting - error sent by actory while it's restarting
 	ErrRestarting = errors.New("actor: in restarting state")
-	ErrDead       = errors.New("actor: dead")
+
+	//ErrDead - error sent by dead actor
+	ErrDead = errors.New("actor: dead")
 )
 
 //Reply is send by HandleCall or HandleCast
@@ -20,16 +23,16 @@ type StateInterface interface{}
 
 type actorInterface interface {
 	start(init Initer, messages []MessageInterface) error
-	restart() error
+	init() error
+	loop(readyChan chan bool) error
+	setMonitor(m *monitor)
+
 	HandleCall(message MessageInterface) Reply
 	HandleCast(message MessageInterface) Reply
-	loop(readyChan chan bool) error
-	//stop() error
-	setMonitor(m *monitor)
 }
 
 //Actor struct
-type actor struct {
+type Actor struct {
 	pid              pid
 	messageChanSync  chan MessageInterface
 	messageChanAsync chan MessageInterface
@@ -40,54 +43,19 @@ type actor struct {
 	spec             ChildSpec
 	monitor          *monitor
 	//dieChan    chan bool
-
 	ready chan bool
 }
 
-//
+//Initer defines function to set initial actor state
 type Initer struct {
 	Fn   func(params interface{}) (StateInterface, error)
 	Args interface{}
 }
 
-//Start creates new actor
-//TODO check that callbacks are defines. if not return
-func (a *actor) start(init Initer, messages []MessageInterface) error {
-
-	var err error
-	a.state, err = init.Fn(init.Args)
-	if err != nil {
-		return err
-	}
-	a.pid = newPid()
-	a.initer = init
-
-	a.messages = make(map[string]struct{})
-	for _, m := range messages {
-		a.messages[m.GetType()] = struct{}{}
-	}
-
-	return a.restart()
-}
-
-//
-func (a *actor) restart() error {
-	a.messageChanSync = make(chan MessageInterface)
-	a.messageChanAsync = make(chan MessageInterface)
-	a.replyChan = make(chan Reply)
-	//a.dieChan = make(chan bool)
-	a.ready = make(chan bool)
-	go a.loop(a.ready)
-	go func() {
-		a.ready <- true
-		return
-	}()
-
-	return nil
-}
+// PUBLIC METHODS
 
 //HandleCall makes sync actor call
-func (a *actor) HandleCall(message MessageInterface) Reply {
+func (a *Actor) HandleCall(message MessageInterface) Reply {
 	if ready := <-a.ready; !ready {
 		return Reply{ErrRestarting, nil}
 	}
@@ -96,7 +64,7 @@ func (a *actor) HandleCall(message MessageInterface) Reply {
 }
 
 //HandleCast makes async call to actor
-func (a *actor) HandleCast(message MessageInterface) Reply {
+func (a *Actor) HandleCast(message MessageInterface) Reply {
 	if ready := <-a.ready; !ready {
 		return Reply{ErrRestarting, nil}
 	}
@@ -104,18 +72,57 @@ func (a *actor) HandleCast(message MessageInterface) Reply {
 	return Reply{nil, "ok"}
 }
 
-//
-func (a *actor) WaitRestart() error {
+//WaitRestart should be used to wait actor to be restarted by supervisor after entering restart state
+func (a *Actor) WaitRestart() error {
 	return a.monitor.waitRestart()
 }
 
+// PRIVATE METHODS
+
+//Start creates new actor
+//TODO check that callbacks are defines. if not return
+func (a *Actor) start(init Initer, messages []MessageInterface) error {
+
+	a.pid = newPid()
+	a.initer = init
+
+	a.messages = make(map[string]struct{})
+	for _, m := range messages {
+		a.messages[m.GetType()] = struct{}{}
+	}
+
+	return a.init()
+}
+
 //
-func (a *actor) setMonitor(m *monitor) {
+func (a *Actor) init() error {
+
+	var err error
+	a.state, err = a.initer.Fn(a.initer.Args)
+	if err != nil {
+		return err
+	}
+
+	a.messageChanSync = make(chan MessageInterface)
+	a.messageChanAsync = make(chan MessageInterface)
+	a.replyChan = make(chan Reply)
+
+	a.ready = make(chan bool)
+	go a.loop(a.ready)
+	go func() {
+		a.ready <- true
+	}()
+
+	return nil
+}
+
+//
+func (a *Actor) setMonitor(m *monitor) {
 	a.monitor = m
 }
 
 //main select loop
-func (a *actor) loop(readyChan chan bool) error {
+func (a *Actor) loop(readyChan chan bool) error {
 	for {
 		select {
 		case msg := <-a.messageChanSync:
@@ -143,7 +150,7 @@ func (a *actor) loop(readyChan chan bool) error {
 	}
 }
 
-func (a *actor) handleDie(err error) error {
+func (a *Actor) handleDie(err error) error {
 	close(a.messageChanAsync)
 	close(a.messageChanSync)
 	close(a.replyChan)

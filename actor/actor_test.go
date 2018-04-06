@@ -10,7 +10,7 @@ import (
 func TestActorUnderLoad(t *testing.T) {
 
 	sup, _ := SupervisorStart(SupOneForOne)
-	worker, _ := sup.SupervisorStartChild(getWorketSpec())
+	worker, _ := sup.StartChild(getWorkerSpec())
 
 	w := sync.WaitGroup{}
 

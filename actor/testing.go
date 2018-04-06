@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-func getWorketSpec() ChildSpec {
+//
+func getWorkerSpec() ChildSpec {
 	return ChildSpec{
 		IsSupervisor:   false,
 		RestartCount:   2,

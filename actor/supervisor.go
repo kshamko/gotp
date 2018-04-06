@@ -5,18 +5,32 @@ import (
 )
 
 const (
+	//SupOneForOne - restart strategy means that  your supervisor supervises
+	//many workers and one of them fails, only that one should be restarted
 	SupOneForOne = iota
+
+	//SupOneForAll - restart strategy means that if a child process terminates,
+	//all other child processes are terminated, and then all child processes,
+	//including the terminated one, are restarted.
 	SupOneForAll
+
+	//SupRestForAll - restart strategy will terminate all actors started after
+	//terminated one. Then the terminated child process and the rest of the child
+	//processes are restarted.
 	SupRestForAll
-	SupSimpleOneForOne
+
+	//SupSimpleOneForOne
 )
 
-//Sup
+//Sup represents supervisor
 type Sup struct {
-	actor
+	Actor
 	supType int
 }
 
+// ChildSpec - specification of child which contains Init functions,
+// IsSupervisor flag (if child is another supervisor), restart intencity (RestartCount
+// happened in )
 type ChildSpec struct {
 	Init           Initer
 	IsSupervisor   bool
@@ -30,10 +44,10 @@ type supState struct {
 }
 
 type supChild struct {
-	startTime  time.Time
-	restarts   int
-	actor      actorInterface
-	supervisor bool
+	startTime time.Time
+	restarts  int
+	actor     actorInterface
+	//	supervisor bool
 }
 
 //type actorData
@@ -54,18 +68,23 @@ func SupervisorStart(supType int) (*Sup, error) {
 		},
 	}
 
-	s.start(initer, msgs)
-	return s, nil
+	err := s.start(initer, msgs)
+	return s, err
 }
 
-//SupervisorStartChild starts child
-func (s *Sup) SupervisorStartChild(spec ChildSpec) (*actor, error) {
+//StartChild starts child
+func (s *Sup) StartChild(spec ChildSpec) (*Actor, error) {
 	res := s.HandleCall(msgStartChild{spec, s})
-	return res.Response.(*actor), nil
+	return res.Response.(*Actor), nil
+}
+
+//TerminateChild gracefully stops child
+func (s *Sup) TerminateChild() {
+
 }
 
 //
-func (s *Sup) supervisorRestartChild(a *actor) error {
+func (s *Sup) restartChild(a *Actor) error {
 	r := s.HandleCall(msgRestartChild{a, s})
 	return r.Err
 }
@@ -80,11 +99,6 @@ func (s *Sup) setupMonitor(child actorInterface) {
 	}
 
 	restarter.setupMonitor(s, child)
-	/*mon := newMonitor(s, child)
-	mon.start(func(sup, actr actorInterface) error {
-		time.Sleep(actr.(*actor).spec.RestartRetryIn)
-		return sup.(*Sup).supervisorRestartChild(actr.(*actor))
-	})*/
 }
 
 func (s *Sup) checkChildStats(childInfo supChild) (int, error) {
@@ -92,12 +106,12 @@ func (s *Sup) checkChildStats(childInfo supChild) (int, error) {
 	var err error
 
 	restartCount := childInfo.restarts + 1
-	restartThreshold := childInfo.actor.(*actor).spec.RestartRetryIn + 25*childInfo.actor.(*actor).spec.RestartRetryIn/100
+	restartThreshold := childInfo.actor.(*Actor).spec.RestartRetryIn + 25*childInfo.actor.(*Actor).spec.RestartRetryIn/100
 	if childInfo.startTime.Add(restartThreshold).UnixNano() < time.Now().UnixNano() {
 		restartCount = 1
 	}
 
-	if restartCount > childInfo.actor.(*actor).spec.RestartCount {
+	if restartCount > childInfo.actor.(*Actor).spec.RestartCount {
 		err = ErrDead
 	}
 
@@ -108,24 +122,27 @@ func (s *Sup) checkChildStats(childInfo supChild) (int, error) {
 // SUPERVISOR ACTOR MESSAGES
 //
 
+//
 type msgRestartChild struct {
-	child *actor
+	child *Actor
 	sup   *Sup
 }
 
+//
 func (m msgRestartChild) GetType() string {
 	return "restart_child"
 }
 
+//
 func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 
 	s := state.(supState)
 	childStats := s.children[m.child.pid.id]
 	restartCount, err := m.sup.checkChildStats(childStats)
 
+	//restart error
 	if err != nil {
 		delete(s.children, m.child.pid.id)
-
 		return MessageReply{
 			ActorReply: Reply{
 				Err:      ErrDead,
@@ -135,8 +152,13 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 		}
 	}
 
-	err = m.child.restart()
+	//setup monitor
+	m.sup.setupMonitor(m.child)
+
+	//init actor
+	err = m.child.init()
 	if err != nil {
+		m.child.monitor.trigger(err)
 		return MessageReply{
 			ActorReply: Reply{
 				Err:      err,
@@ -146,13 +168,10 @@ func (m msgRestartChild) Handle(state StateInterface) MessageReply {
 		}
 	}
 
-	//update state
+	//update sup state
 	childStats.startTime = time.Now()
 	childStats.restarts = restartCount
 	s.children[m.child.pid.id] = childStats
-
-	//setup monitor
-	m.sup.setupMonitor(m.child)
 
 	return MessageReply{
 		ActorReply: Reply{
@@ -169,9 +188,15 @@ type msgStartChild struct {
 	sup  *Sup
 }
 
+//
+func (m msgStartChild) GetType() string {
+	return "add_child"
+}
+
+//
 func (m msgStartChild) Handle(state StateInterface) MessageReply {
 
-	a := &actor{
+	a := &Actor{
 		spec: m.spec,
 	}
 
@@ -205,10 +230,6 @@ func (m msgStartChild) Handle(state StateInterface) MessageReply {
 		},
 		State: s,
 	}
-}
-
-func (m msgStartChild) GetType() string {
-	return "add_child"
 }
 
 // Private function
